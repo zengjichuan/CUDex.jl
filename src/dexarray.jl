@@ -1,91 +1,85 @@
 """
 
-KnetArray is a container for GPU arrays that supports most of the
+DexArray is a container for GPU arrays that supports most of the
 AbstractArray interface.  Important differences from the alternative
 CudaArray are: (1) a custom memory manager that minimizes the number
 of calls to the slow cudaMalloc by reusing already allocated but
 garbage collected GPU pointers.  (2) a custom getindex that handles
 ranges such as `a[5:10]` as views (with memory shared with the
-original array) instead of copies.  KnetArrays can be created by
+original array) instead of copies.  DexArrays can be created by
 specifying the element type and dimensions or by conversion from
 regular Arrays and they can be converted back to regular Arrays (which
 involve copying to and from the GPU memory):
 
-    a = KnetArray(Float32,2,3)
-    b = KnetArray(zeros(2,3))
+    a = DexArray(Float32,2,3)
+    b = DexArray(zeros(2,3))
     c = Array(b)
 
 """
-type KnetArray{T,N}
-    ptr::KnetPtr
+type DexArray{T,N}
+    ptr::DexPtr
     dims::NTuple{N,Int}
 end
 
-# Note: I removed <: AbstractArray{T,N} after I painfully discovered
-# some inefficient AbstractArray methods inherited unintentionally.
-# It is better to define a few extra methods to keep a tighter control
-# on what methods exactly get called for KnetArrays.
-
-
 # Aliases:
-typealias KnetMatrix{T} KnetArray{T,2}
-typealias KnetVector{T} KnetArray{T,1}
-typealias KnetVecOrMat{T} Union{KnetVector{T}, KnetMatrix{T}}
+typealias DexMatrix{T} DexArray{T,2}
+typealias DexVector{T} DexArray{T,1}
+typealias DexVecOrMat{T} Union{DexVector{T}, DexMatrix{T}}
 
 # Constructors:
-KnetArray{T,N}(::Type{T}, dims::NTuple{N,Int})=KnetArray{T,N}(KnetPtr(sizeof(T)*prod(dims)), dims)
-KnetArray(T::Type, dims::Int...)=KnetArray(T,dims)
-KnetArray(T::Type, d::Integer...)=KnetArray(T,convert(Tuple{Vararg{Int}}, d))
+DexArray{T,N}(::Type{T}, dims::NTuple{N,Int})=DexArray{T,N}(DexPtr(sizeof(T)*prod(dims)), dims)
+DexArray(T::Type, dims::Int...)=DexArray(T,dims)
+DexArray(T::Type, d::Integer...)=DexArray(T,convert(Tuple{Vararg{Int}}, d))
 
 # Conversions:
 import Base: convert, reshape, vec, unsafe_convert, pointer
-# KnetArray <- KnetArray
-convert{T,N}(::Type{KnetArray}, x::KnetArray{T,N}) = x
-convert{T,N}(::Type{KnetArray{T}}, x::KnetArray{T,N}) = x
-convert{T,N}(::Type{KnetArray{T,N}}, x::KnetArray{T,N}) = x
-convert{T,N,S}(::Type{KnetArray{T}}, x::KnetArray{S,N}) = convert(KnetArray{T,N}, x)
-convert{T,N,S}(::Type{KnetArray{T,N}}, x::KnetArray{S,N}) = convert(KnetArray{T,N},unsafe_copy!(Array(S, size(x)), 1, x, 1, length(x)))
-reshape{T}(a::KnetArray{T},dims::Dims)=(if dims==size(a); a; elseif prod(dims)!=length(a); throw(DimensionMismatch()); else; KnetArray{T,length(dims)}(a.ptr,dims); end)
-reshape(a::KnetArray, dims::Int...) = reshape(a, dims)
-vec(a::KnetArray) = reshape(a, length(a))
-# KnetArray <- AbstractArray
-convert{T,N}(::Type{KnetArray}, x::AbstractArray{T,N}) = convert(KnetArray{T,N}, x)
-convert{T,N,S}(::Type{KnetArray{T}}, x::AbstractArray{S,N}) = convert(KnetArray{T,N}, x)
-convert{T,N,S}(::Type{KnetArray{T,N}}, x::AbstractArray{S,N}) = unsafe_copy!(KnetArray(T, size(x)), 1, convert(Array{T,N},x), 1, length(x))
-# Array <- KnetArray
-convert{T,N}(::Type{Array}, x::KnetArray{T,N}) = convert(Array{T,N}, x)
-convert{T,N,S}(::Type{Array{T}}, x::KnetArray{S,N}) = convert(Array{T,N}, x)
-convert{T,N,S}(::Type{Array{T,N}}, x::KnetArray{S,N}) = convert(Array{T,N},unsafe_copy!(Array(S, size(x)), 1, x, 1, length(x)))
-# Ptr <- KnetArray
-unsafe_convert{T}(::Type{Ptr{T}}, a::KnetArray) = unsafe_convert(Ptr{T}, pointer(a))
-pointer{T}(a::KnetArray{T})=convert(Ptr{T}, a.ptr.ptr)
-pointer{T}(a::KnetArray{T},i)=convert(Ptr{T}, a.ptr.ptr + (i-1)*sizeof(T))
+# DexArray <- DexArray
+convert{T,N}(::Type{DexArray}, x::DexArray{T,N}) = x
+convert{T,N}(::Type{DexArray{T}}, x::DexArray{T,N}) = x
+convert{T,N}(::Type{DexArray{T,N}}, x::DexArray{T,N}) = x
+convert{T,N,S}(::Type{DexArray{T}}, x::DexArray{S,N}) = convert(DexArray{T,N}, x)
+convert{T,N,S}(::Type{DexArray{T,N}}, x::DexArray{S,N}) = convert(DexArray{T,N},unsafe_copy!(Array(S, size(x)), 1, x, 1, length(x)))
+reshape{T}(a::DexArray{T},dims::Dims)=(if dims==size(a); a; elseif prod(dims)!=length(a); throw(DimensionMismatch()); else; DexArray{T,length(dims)}(a.ptr,dims); end)
+reshape(a::DexArray, dims::Int...) = reshape(a, dims)
+vec(a::DexArray) = reshape(a, length(a))
+# DexArray <- AbstractArray
+convert{T,N}(::Type{DexArray}, x::AbstractArray{T,N}) = convert(DexArray{T,N}, x)
+convert{T,N,S}(::Type{DexArray{T}}, x::AbstractArray{S,N}) = convert(DexArray{T,N}, x)
+convert{T,N,S}(::Type{DexArray{T,N}}, x::AbstractArray{S,N}) = unsafe_copy!(DexArray(T, size(x)), 1, convert(Array{T,N},x), 1, length(x))
+# Array <- DexArray
+convert{T,N}(::Type{Array}, x::DexArray{T,N}) = convert(Array{T,N}, x)
+convert{T,N,S}(::Type{Array{T}}, x::DexArray{S,N}) = convert(Array{T,N}, x)
+convert{T,N,S}(::Type{Array{T,N}}, x::DexArray{S,N}) = convert(Array{T,N},unsafe_copy!(Array(S, size(x)), 1, x, 1, length(x)))
+# Ptr <- DexArray
+unsafe_convert{T}(::Type{Ptr{T}}, a::DexArray) = unsafe_convert(Ptr{T}, pointer(a))
+pointer{T}(a::DexArray{T})=convert(Ptr{T}, a.ptr.ptr)
+pointer{T}(a::DexArray{T},i)=convert(Ptr{T}, a.ptr.ptr + (i-1)*sizeof(T))
 
 # AbstractArray interface
 import Base: eachindex, elsize, eltype, endof, fill!, first, length, linearindexing, ndims, ones, similar, size, stride, zeros
-eachindex(a::KnetArray) = (1:length(a))
-elsize{T}(::KnetArray{T}) = sizeof(T)
-eltype{T}(::KnetArray{T})=T
-eltype{T}(::Type{KnetArray{T}}) = T
-eltype{T,n}(::Type{KnetArray{T,n}}) = T
-endof(a::KnetArray) = length(a)
-fill!{T}(a::KnetArray{T},x)=(knetfill!(a,T(x),1,length(a));a)
-first(a::KnetArray) = a[1]
-length(a::KnetArray)=prod(size(a))
-linearindexing(::KnetArray)=LinearFast()
-ndims{T,N}(a::KnetArray{T,N})=N
-ones{T}(a::KnetArray{T})=fill!(similar(a),one(T))
-similar(a::KnetArray, T, dims::Dims)      = KnetArray(T, dims)
-similar(a::KnetArray, T, dims::Int...)    = similar(a, T, dims)
-similar(a::KnetArray, T)                  = similar(a, T, size(a))
-similar{T}(a::KnetArray{T})               = similar(a, T, size(a))
-similar{T}(a::KnetArray{T}, dims::Dims)   = similar(a, T, dims)
-similar{T}(a::KnetArray{T}, dims::Int...) = similar(a, T, dims)
-size(a::KnetArray)=a.dims
-size{T,N}(a::KnetArray{T,N},i::Integer)=(if i>N; 1; else; size(a)[i]; end)
-stride{T,N}(a::KnetArray{T,N},i::Integer)=(if i>N; length(a); else; s=1; for n=1:(i-1); s*=size(a,n); end; s; end)
-strides{T,N}(a::KnetArray{T,N})=ntuple(n->stride(a,n), N)
-zeros{T}(a::KnetArray{T})=fill!(similar(a),zero(T))
+eachindex(a::DexArray) = (1:length(a))
+elsize{T}(::DexArray{T}) = sizeof(T)
+eltype{T}(::DexArray{T})=T
+eltype{T}(::Type{DexArray{T}}) = T
+eltype{T,n}(::Type{DexArray{T,n}}) = T
+endof(a::DexArray) = length(a)
+fill!{T}(a::DexArray{T},x)=(dexfill!(a,T(x),1,length(a));a)
+first(a::DexArray) = a[1]
+length(a::DexArray)=prod(size(a))
+linearindexing(::DexArray)=LinearFast()
+ndims{T,N}(a::DexArray{T,N})=N
+ones{T}(a::DexArray{T})=fill!(similar(a),one(T))
+similar(a::DexArray, T, dims::Dims)      = DexArray(T, dims)
+similar(a::DexArray, T, dims::Int...)    = similar(a, T, dims)
+similar(a::DexArray, T)                  = similar(a, T, size(a))
+similar{T}(a::DexArray{T})               = similar(a, T, size(a))
+similar{T}(a::DexArray{T}, dims::Dims)   = similar(a, T, dims)
+similar{T}(a::DexArray{T}, dims::Int...) = similar(a, T, dims)
+size(a::DexArray)=a.dims
+size{T,N}(a::DexArray{T,N},i::Integer)=(if i>N; 1; else; size(a)[i]; end)
+stride{T,N}(a::DexArray{T,N},i::Integer)=(if i>N; length(a); else; s=1; for n=1:(i-1); s*=size(a,n); end; s; end)
+strides{T,N}(a::DexArray{T,N})=ntuple(n->stride(a,n), N)
+zeros{T}(a::DexArray{T})=fill!(similar(a),zero(T))
 
 
 # Indexing:
@@ -111,24 +105,24 @@ import Base: getindex, setindex!
 
 # These two are not sufficient in spite of what the documentation says:
 # display goes into an infinite loop!
-# getindex{T}(A::KnetArray{T}, i::Int)=unsafe_copy!(T[0], 1, A, i, 1)[1]
-# setindex!{T}(A::KnetArray{T}, v, i::Int)=unsafe_copy!(A, i, T[v], 1, 1)
+# getindex{T}(A::DexArray{T}, i::Int)=unsafe_copy!(T[0], 1, A, i, 1)[1]
+# setindex!{T}(A::DexArray{T}, v, i::Int)=unsafe_copy!(A, i, T[v], 1, 1)
 
 # First deal with the easy cases: integer indices, a Colon or a UnitRange.
 
-function getindex{T}(A::KnetArray{T}, I::Real)
+function getindex{T}(A::DexArray{T}, I::Real)
     J = Int(I)
     1 <= J <= length(A) || throw(BoundsError(A,J))
-    unsafe_copy!(T[0], 1, A, J, 1)[1]
+    Dex!(T[0], 1, A, J, 1)[1]
 end
 
-function setindex!{T}(A::KnetArray{T}, v, I::Real)
+function setindex!{T}(A::DexArray{T}, v, I::Real)
     J = Int(I)
     1 <= J <= length(A) || throw(BoundsError(A,J))
     unsafe_copy!(A, J, T[v], 1, 1)
 end
 
-function getindex{T}(A::KnetArray{T}, I::Real...)
+function getindex{T}(A::DexArray{T}, I::Real...)
     J = Base.to_indexes(I...)
     @inbounds for j=1:length(J)
         1 <= J[j] <= size(A,j) || throw(BoundsError(A,J))
@@ -137,7 +131,7 @@ function getindex{T}(A::KnetArray{T}, I::Real...)
     unsafe_copy!(T[0], 1, A, i, 1)[1]
 end
 
-function setindex!{T}(A::KnetArray{T}, v, I::Real...)
+function setindex!{T}(A::DexArray{T}, v, I::Real...)
     J = Base.to_indexes(I...)
     @inbounds for j=1:length(J)
         1 <= J[j] <= size(A,j) || throw(BoundsError(A,J))
@@ -146,19 +140,19 @@ function setindex!{T}(A::KnetArray{T}, v, I::Real...)
     unsafe_copy!(A, i, T[v], 1, 1)
 end
 
-function getindex{T}(A::KnetArray{T}, I::UnitRange)
+function getindex{T}(A::DexArray{T}, I::UnitRange)
     1 <= first(I) <= last(I) <= length(A) || throw(BoundsError(A,I))
     off = 1+(first(I)-1)*sizeof(T)
     len = length(I)*sizeof(T)
-    ptr = KnetPtr(A.ptr, off, len)
-    KnetArray{T,1}(ptr, (length(I),))
+    ptr = DexPtr(A.ptr, off, len)
+    DexArray{T,1}(ptr, (length(I),))
 end
 
-function setindex!{T}(A::KnetArray{T}, v, I::UnitRange)
+function setindex!{T}(A::DexArray{T}, v, I::UnitRange)
     1 <= first(I) <= last(I) <= length(A) || throw(BoundsError(A,I))
     if isa(v,Number)
-        knetfill!(A,T(v),first(I),length(I))
-    elseif (isa(v,KnetArray) || isa(v,Array))
+        dexfill!(A,T(v),first(I),length(I))
+    elseif (isa(v,DexArray) || isa(v,Array))
         length(v)==length(I) || throw(DimensionMismatch())
         eltype(v)==T || (v = convert(Array{T},v))
         unsafe_copy!(A,first(I),v,1,length(I))
@@ -167,14 +161,14 @@ function setindex!{T}(A::KnetArray{T}, v, I::UnitRange)
     end
 end
 
-function getindex(A::KnetArray, I::Colon)
+function getindex(A::DexArray, I::Colon)
     reshape(A,length(A))
 end
 
-function setindex!{T}(A::KnetArray{T}, v, I::Colon)
+function setindex!{T}(A::DexArray{T}, v, I::Colon)
     if isa(v,Number)
-        knetfill!(A,T(v),1,length(A))
-    elseif (isa(v,KnetArray) || isa(v,Array))
+        dexfill!(A,T(v),1,length(A))
+    elseif (isa(v,DexArray) || isa(v,Array))
         length(v)==length(A) || throw(DimensionMismatch())
         eltype(v)==T || (v = convert(Array{T},v))
         unsafe_copy!(A,1,v,1,length(A))
@@ -185,15 +179,15 @@ end
 
 # TODO: the following getindex, setindex! work for 1 and 2 dimensions only, write general versions.
 
-function getindex{T,N}(A::KnetArray{T,N}, I::Union{Real, UnitRange, Colon}...)
+function getindex{T,N}(A::DexArray{T,N}, I::Union{Real, UnitRange, Colon}...)
     (nelts,nrows,ncols,firstindex,astep) = indexparams(A,I...)
     B1 = isa(I[1],Colon) ? size(A,1) : length(I[1])
     B2 = isa(I[2],Colon) ? size(A,2) : length(I[2])
     if ncols == 1
         off = 1+(firstindex-1)*sizeof(T)
         len = nrows*sizeof(T)
-        ptr = KnetPtr(A.ptr, off, len)
-        KnetArray{T,2}(ptr, (B1,B2))
+        ptr = DexPtr(A.ptr, off, len)
+        DexArray{T,2}(ptr, (B1,B2))
     else
         B = similar(A, (B1,B2))
         nrows *= sizeof(T); astep *= sizeof(T)
@@ -203,23 +197,23 @@ function getindex{T,N}(A::KnetArray{T,N}, I::Union{Real, UnitRange, Colon}...)
     end
 end
 
-function setindex!{T,N}(A::KnetArray{T,N}, B, I::Union{Real, UnitRange, Colon}...)
+function setindex!{T,N}(A::DexArray{T,N}, B, I::Union{Real, UnitRange, Colon}...)
     (nelts,nrows,ncols,firstindex,astep) = indexparams(A,I...)
     aptr0 = pointer(A, firstindex)
     if isa(B,Number)
         B = T(B)
         if ncols == 1
-            if T <: Float32;    ccall((:fill_32,libknet8),Void,(Cint,Cfloat, Ptr{Cfloat}), nelts,B,aptr0)
-            elseif T<: Float64; ccall((:fill_64,libknet8),Void,(Cint,Cdouble,Ptr{Cdouble}),nelts,B,aptr0)
+            if T <: Float32;    ccall((:fill_32,libcudex),Void,(Cint,Cfloat, Ptr{Cfloat}), nelts,B,aptr0)
+            elseif T<: Float64; ccall((:fill_64,libcudex),Void,(Cint,Cdouble,Ptr{Cdouble}),nelts,B,aptr0)
             else error("$T not supported"); end
         else
-            if T <: Float32;    ccall((:xfill_32,libknet8),Void,(Cint,Cint,Cfloat, Ptr{Cfloat}, Cint),nrows,ncols,B,aptr0,astep)
-            elseif T<: Float64; ccall((:xfill_64,libknet8),Void,(Cint,Cint,Cdouble,Ptr{Cdouble},Cint),nrows,ncols,B,aptr0,astep)
+            if T <: Float32;    ccall((:xfill_32,libcudex),Void,(Cint,Cint,Cfloat, Ptr{Cfloat}, Cint),nrows,ncols,B,aptr0,astep)
+            elseif T<: Float64; ccall((:xfill_64,libcudex),Void,(Cint,Cint,Cdouble,Ptr{Cdouble},Cint),nrows,ncols,B,aptr0,astep)
             else error("$T not supported"); end
         end
     else
         length(B) == nelts || throw(DimensionMismatch())
-        B = convert(KnetArray{T},B)
+        B = convert(DexArray{T},B)
         if ncols == 1
             @cuda(cudart,cudaMemcpyAsync,(Cptr,Cptr,Csize_t,UInt32,Cptr),
                   aptr0, B, nelts*sizeof(T), cudadir(A,B), C_NULL)
@@ -231,7 +225,7 @@ function setindex!{T,N}(A::KnetArray{T,N}, B, I::Union{Real, UnitRange, Colon}..
     return A
 end
 
-function indexparams{T,N}(A::KnetArray{T,N}, I::Union{Real, UnitRange, Colon}...)
+function indexparams{T,N}(A::DexArray{T,N}, I::Union{Real, UnitRange, Colon}...)
     N > 2 && error("setindex for ndims > 2 not implemented yet")
     skipped = false
     nrows = nelts = 1
@@ -287,34 +281,34 @@ import Base: hcat, vcat, cat
 # hcat(m,m): I = (Colon(),1:5) I = (Colon(),6:10)
 # vcat(m,m): I = (1:3,Colon()) I = (4:6,Colon())
 
-function hcat{T}(a::KnetVecOrMat{T}, b::KnetVecOrMat{T})
+function hcat{T}(a::DexVecOrMat{T}, b::DexVecOrMat{T})
     size(a,1)==size(b,1) || throw(DimensionMismatch())
     c1 = size(a,1)
     c2 = size(a,2) + size(b,2)
-    c = KnetArray(T, (c1,c2))
+    c = DexArray(T, (c1,c2))
     c[:,1:size(a,2)] = a
     c[:,1+size(a,2):end] = b
     return c
 end
 
-function vcat{T}(a::KnetVector{T}, b::KnetVector{T})
-    c = KnetArray(T, length(a)+length(b))
+function vcat{T}(a::DexVector{T}, b::DexVector{T})
+    c = DexArray(T, length(a)+length(b))
     c[1:length(a)] = a
     c[1+length(a):end] = b
     return c
 end
 
-function vcat{T}(a::KnetVecOrMat{T}, b::KnetVecOrMat{T})
+function vcat{T}(a::DexVecOrMat{T}, b::DexVecOrMat{T})
     size(a,2)==size(b,2) || throw(DimensionMismatch())
     c1 = size(a,1) + size(b,1)
     c2 = size(a,2)
-    c = KnetArray(T, (c1,c2))
+    c = DexArray(T, (c1,c2))
     c[1:size(a,1),:] = a
     c[1+size(a,1):end,:] = b
     return c
 end
 
-function cat{T}(d, a::KnetVecOrMat{T}, b::KnetVecOrMat{T})
+function cat{T}(d, a::DexVecOrMat{T}, b::DexVecOrMat{T})
     if     d==1; vcat(a,b)
     elseif d==2; hcat(a,b)
     else error("cat($d) not implemented.")
@@ -333,15 +327,15 @@ end
 
 import Base: unsafe_copy!, copy
 
-function unsafe_copy!{T}(dest::Union{KnetArray{T},Array{T}}, doffs, src::Union{KnetArray{T},Array{T}}, soffs, n; stream=C_NULL)
+function unsafe_copy!{T}(dest::Union{DexArray{T},Array{T}}, doffs, src::Union{DexArray{T},Array{T}}, soffs, n; stream=C_NULL)
     @cuda(cudart,cudaMemcpyAsync,(Cptr,Cptr,Csize_t,UInt32,Cptr),
           pointer(dest,doffs), pointer(src,soffs), n*sizeof(T), cudadir(dest,src), stream)
     return dest
 end
 
 function cudadir(a,b)
-    deva = isa(a,KnetArray) && a.ptr.dev >= 0
-    devb = isa(b,KnetArray) && b.ptr.dev >= 0
+    deva = isa(a,DexArray) && a.ptr.dev >= 0
+    devb = isa(b,DexArray) && b.ptr.dev >= 0
     if !deva && !devb; return 0
     elseif deva && !devb; return 1
     elseif !deva && devb; return 2
@@ -349,38 +343,38 @@ function cudadir(a,b)
     end
 end
 
-copy(a::KnetArray)=unsafe_copy!(similar(a),1,a,1,length(a))
+copy(a::DexArray)=unsafe_copy!(similar(a),1,a,1,length(a))
 
 # Efficient fill:
 for S in (32,64); T = Symbol("Float$S"); F = "fill_$S"
-    @eval function knetfill!(a::KnetArray{$T},v::$T,off,len)
-        ccall(($F,$libknet8),Void,(Cint,$T,Ptr{$T}),len,v,pointer(a,off))
+    @eval function dexfill!(a::DexArray{$T},v::$T,off,len)
+        ccall(($F,$libcudex),Void,(Cint,$T,Ptr{$T}),len,v,pointer(a,off))
     end
 end
 
-# AutoGrad functions:
-import AutoGrad: zeroslike, sum_outgrads, OneHot, unary_nd, indexed_function, isequivalent
-zeroslike(a::KnetArray)=zeros(a)
-sum_outgrads{T}(a::KnetArray{T},b::KnetArray{T})=(a+b)
-sum_outgrads(a::KnetArray,b::OneHot)=setindex!(a,sum_outgrads(getindex(a,b.index...),b.value),b.index...)
-unary_nd(f, x::KnetArray, eps) = reshape(eltype(x)[unary_nd(indexed_function(f, x, i), x[i], eps) for i in 1:length(x)], size(x))
-isequivalent(x::Union{KnetArray,AbstractArray}, y::Union{KnetArray,AbstractArray}; o...)=(length(x)==length(y) && all(i->isequivalent(x[i],y[i];o...), 1:length(x)))
+# # AutoGrad functions:
+# import AutoGrad: zeroslike, sum_outgrads, OneHot, unary_nd, indexed_function, isequivalent
+# zeroslike(a::DexArray)=zeros(a)
+# sum_outgrads{T}(a::DexArray{T},b::DexArray{T})=(a+b)
+# sum_outgrads(a::DexArray,b::OneHot)=setindex!(a,sum_outgrads(getindex(a,b.index...),b.value),b.index...)
+# unary_nd(f, x::DexArray, eps) = reshape(eltype(x)[unary_nd(indexed_function(f, x, i), x[i], eps) for i in 1:length(x)], size(x))
+# isequivalent(x::Union{DexArray,AbstractArray}, y::Union{DexArray,AbstractArray}; o...)=(length(x)==length(y) && all(i->isequivalent(x[i],y[i];o...), 1:length(x)))
 
-# Hack for printing without copying the whole KnetArray and without inheriting AbstractArray:
+# Hack for printing without copying the whole DexArray and without inheriting AbstractArray:
 import Base: display, summary
-type KnetDisplay{T,N} <: AbstractArray{T,N}; a::KnetArray{T,N}; end
-getindex(a::KnetDisplay, i...) = getindex(a.a, i...)
-size(a::KnetDisplay) = size(a.a)
-summary(a::KnetDisplay) = summary(a.a)
-summary(a::KnetArray) = string(Base.dims2string(size(a)), " ", typeof(a))
-display(a::KnetArray) = display(KnetDisplay(a))
-AutoGrad._dbg(a::KnetArray) = "K$(join([AutoGrad.id2(a),size(a)...],'_'))"
+type DexDisplay{T,N} <: AbstractArray{T,N}; a::DexArray{T,N}; end
+getindex(a::DexDisplay, i...) = getindex(a.a, i...)
+size(a::DexDisplay) = size(a.a)
+summary(a::DexDisplay) = summary(a.a)
+summary(a::DexArray) = string(Base.dims2string(size(a)), " ", typeof(a))
+display(a::DexArray) = display(DexDisplay(a))
+AutoGrad._dbg(a::DexArray) = "K$(join([AutoGrad.id2(a),size(a)...],'_'))"
 
 # curand functions:
 
 import Base: rand!
-rand!(a::KnetArray{Float32})=(@cuda(curand,curandGenerateUniform,(Cptr,Ptr{Cfloat},Csize_t),rng(),a,length(a)); a)
-rand!(a::KnetArray{Float64})=(@cuda(curand,curandGenerateUniformDouble,(Cptr,Ptr{Cdouble},Csize_t),rng(),a,length(a)); a)
+rand!(a::DexArray{Float32})=(@cuda(curand,curandGenerateUniform,(Cptr,Ptr{Cfloat},Csize_t),rng(),a,length(a)); a)
+rand!(a::DexArray{Float64})=(@cuda(curand,curandGenerateUniformDouble,(Cptr,Ptr{Cdouble},Csize_t),rng(),a,length(a)); a)
 
 let RNG=0
 global rng

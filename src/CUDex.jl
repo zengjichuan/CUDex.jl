@@ -7,6 +7,7 @@ dir(path...) = joinpath(dirname(dirname(@__FILE__)),path...)
 
 export gpu, relu
 
+include("gpu.jl")
 include("karray.jl")
 include("basic.jl")
 include("cublas.jl")
