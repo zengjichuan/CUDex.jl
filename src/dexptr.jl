@@ -30,7 +30,7 @@ initDexFree()=(global DexFree=[ Dict{Int,DexPtrs}() for i=1:gpuCount()+1 ])
 # the DexFree[dev+2] dict keyed by length in bytes so it can be
 # reused.
 
-function freeDexPtr(p::KnetPtr)
+function freeDexPtr(p::DexPtr)
     ptrs = DexFree[p.dev+2][p.len]
     push!(ptrs.free,p.ptr)
 end
