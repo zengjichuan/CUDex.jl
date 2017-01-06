@@ -368,7 +368,7 @@ size(a::DexDisplay) = size(a.a)
 summary(a::DexDisplay) = summary(a.a)
 summary(a::DexArray) = string(Base.dims2string(size(a)), " ", typeof(a))
 display(a::DexArray) = display(DexDisplay(a))
-AutoGrad._dbg(a::DexArray) = "K$(join([AutoGrad.id2(a),size(a)...],'_'))"
+# AutoGrad._dbg(a::DexArray) = "K$(join([AutoGrad.id2(a),size(a)...],'_'))"
 
 # curand functions:
 
