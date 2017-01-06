@@ -80,14 +80,14 @@ function basic_def(f, j=f, o...)
         @eval begin
             function $J(s::$T,x::DexArray{$T})
                 y = similar(x)
-                ccall(($F,$libxflow),Void,(Cint,$T,Ptr{$T},Ptr{$T}),length(y),s,x,y)
+                ccall(($F,$libcudex),Void,(Cint,$T,Ptr{$T},Ptr{$T}),length(y),s,x,y)
                 return y
             end
         end
     end
 end
 
-#if isdefined(:libknet8)
+#if isdefined(:libcudex)
     for f in basic_opts
         isa(f,Tuple) || (f=(f,))
         basic_def(f...)
