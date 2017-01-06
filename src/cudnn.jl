@@ -1,6 +1,4 @@
-"""
-cudnn wrapper
-"""
+# cudnn wrapper
 
 function conv{T}(w::DexArray{T},x::DexArray{T};
                   handle=cudnnhandle, alpha=one(T), beta=zero(T),

@@ -1,5 +1,3 @@
-include("gpu.jl")
-
 import Base: .+, .-, .*, ./, .^, max, min, .==, .>, .>=, .<, .<=, +, -, *, /, \
 
 basic_opts = [
