@@ -1,6 +1,6 @@
 CFLAGS=-O3 -use_fast_math
 
-libcudex.so: basic.o
+libcudex.so: basic_bi.o basic_uni.o
 	nvcc $(CFLAGS) --shared --compiler-options -fPIC $^ -o $@
 
 %.o: %.cu
