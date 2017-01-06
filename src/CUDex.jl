@@ -7,10 +7,11 @@ const libcudex = Libdl.find_library(["libcudex"], [dirname(@__FILE__)])
 
 dir(path...) = joinpath(dirname(dirname(@__FILE__)),path...)
 
-export gpu, relu
+export gpu, DexArray, relu, invx, sigm, logp
 
 include("gpu.jl")
-include("karray.jl")
+include("dexptr.jl")
+include("dexarray.jl")
 include("basic_bi.jl")
 include("basic_uni.jl")
 include("cublas.jl")
