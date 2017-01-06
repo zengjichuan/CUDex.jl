@@ -1,6 +1,7 @@
-'''
+"""
 cudnn wrapper
-'''
+"""
+
 function conv{T}(w::DexArray{T},x::DexArray{T};
                   handle=cudnnhandle, alpha=one(T), beta=zero(T),
                   algo=0, workSpace=C_NULL, workSpaceSizeInBytes=0, o...)

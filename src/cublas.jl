@@ -1,6 +1,7 @@
-'''
+"""
 cublas wrapper
-'''
+"""
+
 import Base: *, A_mul_B!
 import Base: A_mul_Bt, A_mul_Bt!, A_mul_Bc, A_mul_Bc!
 import Base: At_mul_B, At_mul_B!, Ac_mul_B, Ac_mul_B!
