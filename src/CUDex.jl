@@ -1,3 +1,5 @@
+VERSION >= v"0.4.0-dev+6521" && __precompile__()
+
 module CUDex
 
 # package code goes here
@@ -9,7 +11,8 @@ export gpu, relu
 
 include("gpu.jl")
 include("karray.jl")
-include("basic.jl")
+include("basic_bi.jl")
+include("basic_uni.jl")
 include("cublas.jl")
 include("cudnn.jl")
 

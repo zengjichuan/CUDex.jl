@@ -109,14 +109,14 @@ for (f,g,y,dx) in ((:invx, :invxback, :(one(T)/x[i]), :(-y[i]*y[i]*dy[i])),
             end
             return dx
         end
-        @primitive $f(x),dy,y $g(dy,y)
+        # @primitive $f(x),dy,y $g(dy,y)
     end
 end
 
 # To avoid conflict with AutoGrad:
-@primitive tanh(x::Array),dy,y     tanhback(dy,y)
-@primitive tanh(x::DexArray),dy,y tanhback(dy,y)
-@primitive tanhback(dy,y),ddx  ddx.*(1.-y.*y)  ddx.*(-2.*dy.*y)
+# @primitive tanh(x::Array),dy,y     tanhback(dy,y)
+# @primitive tanh(x::DexArray),dy,y tanhback(dy,y)
+# @primitive tanhback(dy,y),ddx  ddx.*(1.-y.*y)  ddx.*(-2.*dy.*y)
 
 # Math for the cross-entropy loss: x is unnormalized input, p is
 # target probabilities, q is estimated probabilities. Read left column
@@ -147,4 +147,4 @@ function logp(x,d...)
 end
 
 # dy should be -p and y=logq so this should give us -p+q
-@primitive  logp(x,d...),dy,y  (dy - exp(y).*sum(dy,d...))
+# @primitive  logp(x,d...),dy,y  (dy - exp(y).*sum(dy,d...))
