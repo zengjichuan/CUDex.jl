@@ -71,7 +71,7 @@ Here is a description of all available keyword arguments:
 * mode: 0 for max, 1 for average including padded values, 2 for average excluding padded values.  Default=0.
 * maxpoolingNanOpt: Nan numbers are not propagated if 0, they are propagated if 1. Default=0.
 * alpha: can be used to scale the result. Default=1.
-* handle: Handle to a previously created cuDNN context. Default=Knet allocated context.
+* handle: Handle to a previously created cuDNN context. Default=Dex allocated context.
 
 """
 
@@ -114,7 +114,7 @@ function cdims{T,N}(x::DexArray{T,N},w::DexArray{T,N}; padding=0, stride=1, o...
     end
 end
 
-function pdims{T,N}(x::KnetArray{T,N}; window=2, padding=0, stride=window, o...)
+function pdims{T,N}(x::DexArray{T,N}; window=2, padding=0, stride=window, o...)
     ntuple(N) do i
         if i < N-1
             wi = (if isa(window,Number); window; else window[i]; end)
