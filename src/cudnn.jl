@@ -92,6 +92,103 @@ function pool_b{T}(x::DexArray{T},y::DexArray{T},dy::DexArray{T};
     return dx
 end
 
+"""
+
+`dropout_f(x,dropout;kwargs...)` computes the forward dropout operation over input values
+to produce an output.
+
+Here is a description of all available keyword arguments:
+* handle: Handle to a previously created cuDNN context. Default=Dex allocated context.
+* dropout: The probability with which the value from input would be propagated through the dropout layer.
+* reserveSpace: Pointer to user-allocated GPU memory used by this function. It is expected that contents of reserveSpace doe not change between cudnnDropoutForward and cudnnDropoutBackward calls.
+* reserveSpaceSizeInBytes: Specifies size in bytes of the provided memory for the reserve space
+TODO: find a neat way to hide reserveSpace. through some kind of global variable managerment.
+
+"""
+
+function dropout_f{T}(x::DexArray{T};dropout=0.5,handle=cudnnhandle)
+    y = similar(x)
+    reservesize_p = Csize_t[0]
+    @cuda(cudnn, cudnnDropoutGetReserveSpaceSize,(Cptr,Ptr{Csize_t}),TD(x),reservesize_p)
+    reservesize = reservesize_p[1]
+    reservespace = DexArray(Int8, Int(reservesize))
+    @cuda(cudnn, cudnnDropoutForward,
+          (Cptr,Cptr,        Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t),
+          handle,DD(dropout=dropout),TD(x)),x,   TD(y),y,    reservespace,reservesize)
+    return y, reservespace  # reservespace should be hide...
+end
+
+function dropout_b{T}(dy::DexArray{T},reserverspace,dropout::Float64;handle=cudnnhandle)
+    dx = similar(dy)
+    @cuda(cudnn, cudnnDropoutBackward,
+          (Cptr,Cptr,                Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t),
+          handle,DD(dropout=dropout),TD(dy),dy, TD(dx),dx,  reserverspace,length(reserverspace))
+    return dx
+end
+
+"""
+
+`rnn_ft(x,w,seqlength,hx,cx;kwargs...)` executes the forward training of the recurrent neural network and produce an output y.
+
+Here is a description of all available keyword arguments:
+* handle: Handle to a previously created cuDNN context. Default=Dex allocated context.
+* seqLength: Number of iterations to unroll over.
+* workspace: Data pointer to GPU memory to be used as a workspace for this call.
+* workSpaceSizeInBytes: Specifies the size in bytes of the provided workspace
+
+"""
+
+function rnn_ft{T}(x::DexArray{T},w::DexArray{T},seqlength::Int,hx::DexArray{T},hc::DexArray{T}; handle=cudnnhandle,o...)
+    y=similar(x)
+    hx = similar(x) # use 0 to initial hidden state of the RNN
+    hc = similar(x) # use 0 to initial cell state of the network
+    hy = similar(hx)
+    cy = similar(cx)
+    xdescs = fill(TD(x),seqlength)
+
+    worksize_p = Cptr[0]
+    @cuda(cudnn, cudnnGetRNNWorkspaceSize,(Ptr{Cptr},Cptr),xdescs,worksize_p)
+    worksize = worksize_p[1]
+    workspace = DexArray(Int8, Int(worksize))
+    resevesize_p = Cptr[0]
+    @cuda(cudnn, cudnnGetRNNTrainingReserveSize,(Cptr,Cptr,Cint,Ptr{Cptr},Csize_t),handle,RD(x;o...),Cint(seqlength),xdescs,resevesize_p)
+    resevesize = resevesize_p[1]
+
+
+    @cuda(cudnn, cudnnRNNForwardInference,
+          (Cptr,Cptr,Cint,                  Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t,            Cptr,Csize_t),
+          handle,RD(x;o...),Cint(seqlength),xdescs,x,        TD(hx),0,   TD(cx),0,   FD(w),w,    TD(y),y,    TD(hy),hy,  TD(cy),cy,  workspace,worksize,reservespace,reservesize)
+    return y
+end
+
+"""
+
+`rnn_fi(x;kwargs...)` executes the forward inference of the recurrent neural network and produce an output y.
+
+"""
+
+function rnn_fi{T}(x::DexArray{T}; handle=cudnnhandle)
+
+end
+
+"""
+`rnn_bx(x;kwargs...)` compute the
+
+"""
+
+function rnn_bx{T}(x::DexArray{T}; handle=cudnnhandle)
+end
+
+"""
+
+`rnn_bw(x;kwargs...)` accumulates weight gradients dw from the recurrent neural network
+
+"""
+
+function rnn_bw{T}(x::DexArray{T}; handle=cudnnhandle)
+end
+
+
 # cudnn datatype
 # an enumerated type indicating the data type to which a tensor descriptor
 # or filter descriptor refers.
@@ -188,11 +285,45 @@ type PD; ptr
     end
 end
 
+type DD; ptr
+    function DD(;dropout=0.5,handle=cudnnhandle)
+        d = Cptr[0]
+        @cuda(cudnn, cudnnCreateDropoutDescriptor, (Ptr{Cptr},),d)
+        statessize_p = Csize_t[0]
+        @cuda(cudnn, cudnnDropoutGetStatesSize, (Cptr,Ptr{Csize_t}), handle,statessize_p)
+        statessize = statessize_p[1]
+        states = DexArray(Int8, Int(statessize))
+        @cude(cudnn, cudnnSetDropoutDescriptor,
+              (Cptr,Cptr, Cfloat,Cptr,  Cint,Culonglong),
+              d[1],handle,Cfloat(dropout),state,statessize, 0)
+        dd = new(d[1])
+        finalizer(dd, x->@cuda(cudnn, cudnnDestroyDropoutDescriptor, (Cptr,),x.ptr)
+        return dd
+    end
+end
+
+rnnmode = Dict("relu"=>0,"tanh"=>1,"lstm"=>2,"GRU"=>3)
+type RD; ptr
+    function RD(x::DexArray;mode="relu",hiddenSize=128,numlayers=1,bidirectional=0)
+        d = Cptr[0]
+        @cuda(cudnn, cudnnCreateRNNDescriptor,(Ptr{Cptr},),d)
+
+        @cuda(cudnn, cudnnSetRNNDescriptor,
+              (Cptr,Cint, Cint,                        Cptr,Cint,Cint,Cint,UInt32),
+              d[1],Cint(hiddensize),Cint(numberlayers),DD(),0,bidirectional,rnnmode[mode],DT(x))
+        rd = new(d[1])
+        finalizer(rd, x->@cuda(cudnn, cudnnDestroyRNNDescriptor, (Cptr,),x.ptr)
+        return rd
+    end
+end
+
 import Base: unsafe_convert
 unsafe_convert(::Type{Cptr}, td::TD)=td.ptr
 unsafe_convert(::Type{Cptr}, fd::FD)=fd.ptr
 unsafe_convert(::Type{Cptr}, cd::CD)=cd.ptr
 unsafe_convert(::Type{Cptr}, pd::PD)=pd.ptr
+unsafe_convert(::Type{Cptr}, dd::DD)=dd.ptr
+unsafe_convert(::Type{Cptr}, rd::RD)=rd.ptr
 
 function cdsize(w, nd)
     if isa(w,Integer)

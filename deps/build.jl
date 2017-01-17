@@ -1,6 +1,6 @@
 Base.compilecache("CUDex")
 try success(`nvcc --version`)
-    cd("../src") do
+    cd("../src/cuda") do
         run(`make libcudex.so`)
     end
 catch
