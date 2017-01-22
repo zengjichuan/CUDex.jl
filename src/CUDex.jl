@@ -15,7 +15,7 @@ include("dexarray.jl")
 include("basic_bi.jl")
 include("basic_uni.jl")
 include("cublas.jl")
-include("cudnn.jl")
+# include("cudnn.jl")
 
 # See if we have a gpu at initialization:
 function __init__()

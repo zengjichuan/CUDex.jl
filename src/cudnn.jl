@@ -118,30 +118,29 @@ function dropout_f{T}(x::DexArray{T};dropout=0.5,handle=cudnnhandle)
     return y, reservespace  # reservespace should be hide...
 end
 
-function dropout_b{T}(dy::DexArray{T},reserverspace,dropout::Float64;handle=cudnnhandle)
+function dropout_b{T}(dy::DexArray{T},reservespace,dropout::Float64;handle=cudnnhandle)
     dx = similar(dy)
     @cuda(cudnn, cudnnDropoutBackward,
           (Cptr,Cptr,                Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t),
-          handle,DD(dropout=dropout),TD(dy),dy, TD(dx),dx,  reserverspace,length(reserverspace))
+          handle,DD(dropout=dropout),TD(dy),dy, TD(dx),dx,  reservespace,length(reservespace))
     return dx
 end
 
 """
 
-`rnn_ft(x,w,seqlength,hx,cx;kwargs...)` executes the forward training of the recurrent neural network and produce an output y.
-
+`rnn_ft(x,w,seqlength;kwargs...)` executes the forward training of the recurrent neural network and produce an output y.
+* seqLength: Number of iterations to unroll over.
 Here is a description of all available keyword arguments:
 * handle: Handle to a previously created cuDNN context. Default=Dex allocated context.
-* seqLength: Number of iterations to unroll over.
-* workspace: Data pointer to GPU memory to be used as a workspace for this call.
-* workSpaceSizeInBytes: Specifies the size in bytes of the provided workspace
+* hiddenSize: size of the hidden unit
 
 """
 
-function rnn_ft{T}(x::DexArray{T},w::DexArray{T},seqlength::Int,hx::DexArray{T},hc::DexArray{T}; handle=cudnnhandle,o...)
+function rnn_ft{T}(x::DexArray{T},w::DexArray{T},seqlength::Int;handle=cudnnhandle,hiddensize=128,numlayers=1,mode="relu",bidirectional=0)
     y=similar(x)
-    hx = similar(x) # use 0 to initial hidden state of the RNN
-    hc = similar(x) # use 0 to initial cell state of the network
+    hidden_shape = (numlayers,size(x,2),(bidirectional == 1)?hiddensize*2:hiddensize)
+    hx = DexArray(rand(hidden_shape)) # use rand to initial hidden state of the RNN
+    cx = DexArray(rand(hidden_shape)) # use rand to initial cell state of the network
     hy = similar(hx)
     cy = similar(cx)
     xdescs = fill(TD(x),seqlength)
@@ -151,14 +150,13 @@ function rnn_ft{T}(x::DexArray{T},w::DexArray{T},seqlength::Int,hx::DexArray{T},
     worksize = worksize_p[1]
     workspace = DexArray(Int8, Int(worksize))
     resevesize_p = Cptr[0]
-    @cuda(cudnn, cudnnGetRNNTrainingReserveSize,(Cptr,Cptr,Cint,Ptr{Cptr},Csize_t),handle,RD(x;o...),Cint(seqlength),xdescs,resevesize_p)
-    resevesize = resevesize_p[1]
-
-
-    @cuda(cudnn, cudnnRNNForwardInference,
-          (Cptr,Cptr,Cint,                  Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t,            Cptr,Csize_t),
-          handle,RD(x;o...),Cint(seqlength),xdescs,x,        TD(hx),0,   TD(cx),0,   FD(w),w,    TD(y),y,    TD(hy),hy,  TD(cy),cy,  workspace,worksize,reservespace,reservesize)
-    return y
+    @cuda(cudnn, cudnnGetRNNTrainingReserveSize,(Cptr,Cptr,Cint,Ptr{Cptr},Csize_t),handle,RD(x,hiddenSize,numlayers,mode,bidirectional),Cint(seqlength),xdescs,resevesize_p)
+    reservesize = resevesize_p[1]
+    reservespace = DexArray(Int8, Int(reservesize))
+    @cuda(cudnn, cudnnRNNForwardTraining,
+          (Cptr,Cptr,Cint,                             Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t,      Cptr,Csize_t),
+          handle,RD(x,hiddenSize,numlayers,mode,bidirectional),Cint(seqlength),xdescs,x,        TD(hx),hx,  TD(cx),cx,  FD(w),w,    TD(y),y,    TD(hy),hy,  TD(cy),cy,  workspace,worksize,reservespace,reservesize)
+    return y, hy, cy, reservespace
 end
 
 """
@@ -167,16 +165,50 @@ end
 
 """
 
-function rnn_fi{T}(x::DexArray{T}; handle=cudnnhandle)
+function rnn_fi{T}(x::DexArray{T},w::DexArray{T},seqlength::Int;handle=cudnnhandle,hiddensize=128,numlayers=1,mode="relu",bidirectional=0)
+    y=similar(x)
+    # hidden shape: number of layers, batchsize(2nd dim of x), hiddensize
+    hidden_shape = (numlayers,size(x,2),(bidirectional == 1)?hiddensize*2:hiddensize)
+    hx = DexArray(rand(hidden_shape)) # use rand to initial hidden state of the RNN
+    cx = DexArray(rand(hidden_shape)) # use rand to initial cell state of the network
+    hy = similar(hx)
+    cy = similar(cx)
 
+    worksize_p = Cptr[0]
+    @cuda(cudnn, cudnnGetRNNWorkspaceSize,(Ptr{Cptr},Cptr),xdescs,worksize_p)
+    worksize = worksize_p[1]
+    workspace = DexArray(Int8, Int(worksize))
+
+    @cuda(cudnn, cudnnRNNForwardInference,
+          (Cptr,Cptr,Cint,                                                     Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t),
+          handle,RD(x,hiddenSize,numlayers,mode,bidirectional),Cint(seqlength),xdescs,x,        TD(hx),hx,  TD(cx),cx,  FD(w),w,    TD(y),y,    TD(hy),hy,  TD(cy),cy,  workspace,worksize)
+    return y, hy, cy
 end
 
 """
-`rnn_bx(x;kwargs...)` compute the
+`rnn_bx(x;kwargs...)` compute the geadients dy, dhy, dhc, weights w and input gradients dx, dhx, dcx.
+workspace is required for intermediate storage. The data in reserveSpace must have previously been generated by cudnnRNNForwardTraining.
 
 """
 
-function rnn_bx{T}(x::DexArray{T}; handle=cudnnhandle)
+function rnn_bx{T}(x::DexArray{T},y::DexArray{T},w::DexArray{T},dy::DexArray{T},dhy::DexArray{T},dcy::DexArray{T},reservespace,seqlength::Int;handle=cudnnhandle,hiddensize=128,numlayers=1,mode="relu",bidirectional=0)
+    ydescs = fill(TD(y),seqlength)
+    dydescs = fill(TD(dy),seqlength)
+    dxdescs = fill(TD(x),seqlength)
+    hx = DexArray(rand(size(dhy))) # use rand to initial hidden state of the RNN
+    cx = DexArray(rand(size(dcy))) # use rand to initial cell state of the network
+
+    dx = similar(x)
+    dhx = similar(hx)
+    dcx = similar(cx)
+    worksize_p = Cptr[0]
+    @cuda(cudnn, cudnnGetRNNWorkspaceSize,(Ptr{Cptr},Cptr),xdescs,worksize_p)
+    worksize = worksize_p[1]
+    workspace = DexArray(Int8, Int(worksize))
+    @cuda(cudnn, cudnnRNNBackwardData,
+          (Cptr,Cint,Ptr{Cptr},Ptr{T},    Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t,Cptr,Csize_t),
+          handle,Cint(seqlength),ydescs,y,dydescs,dy,      TD(dhy),dhy,TD(dcy),dcy,FD(w),w,   ,TD(hx),hx,  TD(cx),cx,  dxdescs,dx,      TD(dhx),dhx,TD(dcx),dcx,workspace,worksize,reservespace,length(reservespace))
+    return dx, dhx, dxc, reservespace
 end
 
 """
@@ -185,7 +217,17 @@ end
 
 """
 
-function rnn_bw{T}(x::DexArray{T}; handle=cudnnhandle)
+function rnn_bw{T}(x::DexArray{T},y::DexArray{T},w::DexArray{T},dw::DexArray{T},reservespace,seqlength::Int;handle=cudnnhandle,hiddensize=128,numlayers=1,mode="relu",bidirectional=0)
+    xdescs = fill(TD(x),seqlength)
+    ydescs = fill(TD(y),seqlength)
+
+    worksize_p = Cptr[0]
+    @cuda(cudnn, cudnnGetRNNWorkspaceSize,(Ptr{Cptr},Cptr),xdescs,worksize_p)
+    worksize = worksize_p[1]
+    workspace = DexArray(Int8, Int(worksize))
+    @cuda(cudnn, cudnnRNNBackwardWeights,
+          (Cptr,Cint,Ptr{Cptr},Ptr{T},   ,Cptr,Ptr{T},Ptr{Cptr},Ptr{T},Cptr,Csize_t,Cptr,Ptr{T}    ,Cptr,Csize_t),
+          handle,Cint(seqlength),xdescs,x,TD(hx),hx,  ydeses,y,        workspace,worksize,FD(dw),dw,reservespace,length(reservespace))
 end
 
 
@@ -304,7 +346,7 @@ end
 
 rnnmode = Dict("relu"=>0,"tanh"=>1,"lstm"=>2,"GRU"=>3)
 type RD; ptr
-    function RD(x::DexArray;mode="relu",hiddenSize=128,numlayers=1,bidirectional=0)
+    function RD(x::DexArray,hiddenSize::Int,numlayers::Int,mode::AbstractString,bidirectional::Int)
         d = Cptr[0]
         @cuda(cudnn, cudnnCreateRNNDescriptor,(Ptr{Cptr},),d)
 
