@@ -114,7 +114,7 @@ function dropout_f{T}(x::DexArray{T};dropout=0.5,handle=cudnnhandle)
     reservespace = DexArray(Int8, Int(reservesize))
     @cuda(cudnn, cudnnDropoutForward,
           (Cptr,Cptr,        Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t),
-          handle,DD(dropout=dropout),TD(x)),x,   TD(y),y,    reservespace,reservesize)
+          handle,DD(dropout=dropout),TD(x),x,   TD(y),y,    reservespace,reservesize)
     return y, reservespace  # reservespace should be hide...
 end
 
@@ -207,7 +207,7 @@ function rnn_bx{T}(x::DexArray{T},y::DexArray{T},w::DexArray{T},dy::DexArray{T},
     workspace = DexArray(Int8, Int(worksize))
     @cuda(cudnn, cudnnRNNBackwardData,
           (Cptr,Cint,Ptr{Cptr},Ptr{T},    Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Ptr{Cptr},Ptr{T},Cptr,Ptr{T},Cptr,Ptr{T},Cptr,Csize_t,Cptr,Csize_t),
-          handle,Cint(seqlength),ydescs,y,dydescs,dy,      TD(dhy),dhy,TD(dcy),dcy,FD(w),w,   ,TD(hx),hx,  TD(cx),cx,  dxdescs,dx,      TD(dhx),dhx,TD(dcx),dcx,workspace,worksize,reservespace,length(reservespace))
+          handle,Cint(seqlength),ydescs,y,dydescs,dy,      TD(dhy),dhy,TD(dcy),dcy,FD(w),w,    TD(hx),hx,  TD(cx),cx,  dxdescs,dx,      TD(dhx),dhx,TD(dcx),dcx,workspace,worksize,reservespace,length(reservespace))
     return dx, dhx, dxc, reservespace
 end
 
@@ -226,8 +226,9 @@ function rnn_bw{T}(x::DexArray{T},y::DexArray{T},w::DexArray{T},dw::DexArray{T},
     worksize = worksize_p[1]
     workspace = DexArray(Int8, Int(worksize))
     @cuda(cudnn, cudnnRNNBackwardWeights,
-          (Cptr,Cint,Ptr{Cptr},Ptr{T},   ,Cptr,Ptr{T},Ptr{Cptr},Ptr{T},Cptr,Csize_t,Cptr,Ptr{T}    ,Cptr,Csize_t),
+          (Cptr,Cint,Ptr{Cptr},Ptr{T}    ,Cptr,Ptr{T},Ptr{Cptr},Ptr{T},Cptr,Csize_t,Cptr,Ptr{T}    ,Cptr,Csize_t),
           handle,Cint(seqlength),xdescs,x,TD(hx),hx,  ydeses,y,        workspace,worksize,FD(dw),dw,reservespace,length(reservespace))
+    return dw
 end
 
 
@@ -335,11 +336,11 @@ type DD; ptr
         @cuda(cudnn, cudnnDropoutGetStatesSize, (Cptr,Ptr{Csize_t}), handle,statessize_p)
         statessize = statessize_p[1]
         states = DexArray(Int8, Int(statessize))
-        @cude(cudnn, cudnnSetDropoutDescriptor,
+        @cuda(cudnn, cudnnSetDropoutDescriptor,
               (Cptr,Cptr, Cfloat,Cptr,  Cint,Culonglong),
               d[1],handle,Cfloat(dropout),state,statessize, 0)
         dd = new(d[1])
-        finalizer(dd, x->@cuda(cudnn, cudnnDestroyDropoutDescriptor, (Cptr,),x.ptr)
+        finalizer(dd, x->@cuda(cudnn, cudnnDestroyDropoutDescriptor, (Cptr,),x.ptr))
         return dd
     end
 end
@@ -354,7 +355,7 @@ type RD; ptr
               (Cptr,Cint, Cint,                        Cptr,Cint,Cint,Cint,UInt32),
               d[1],Cint(hiddensize),Cint(numberlayers),DD(),0,bidirectional,rnnmode[mode],DT(x))
         rd = new(d[1])
-        finalizer(rd, x->@cuda(cudnn, cudnnDestroyRNNDescriptor, (Cptr,),x.ptr)
+        finalizer(rd, x->@cuda(cudnn, cudnnDestroyRNNDescriptor, (Cptr,),x.ptr))
         return rd
     end
 end
