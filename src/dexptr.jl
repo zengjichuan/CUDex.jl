@@ -80,7 +80,7 @@ function DexPtr(nbytes::Integer)
     if !isempty(ptrs.free)
         return DexPtr(pop!(ptrs.free),nbytes,dev)
     end
-    knetgc(); print("+")
+    dexgc(); print("+")
     ptr = dexMalloc(nbytes)
     if ptr != nothing
         ptrs.used += 1

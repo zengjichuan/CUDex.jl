@@ -7,7 +7,7 @@ const libcudex = Libdl.find_library(["libcudex"], [dirname(@__FILE__)])
 
 dir(path...) = joinpath(dirname(dirname(@__FILE__)),path...)
 
-export gpu, DexArray, relu, invx, sigm, logp, conv_f, pool_f
+export gpu, DexArray, relu, invx, sigm, logp, conv_f, pool_f, rnn_ft
 
 include("gpu.jl")
 include("dexptr.jl")
@@ -15,7 +15,7 @@ include("dexarray.jl")
 include("basic_bi.jl")
 include("basic_uni.jl")
 include("cublas.jl")
-# include("cudnn.jl")
+include("cudnn.jl")
 
 # See if we have a gpu at initialization:
 function __init__()

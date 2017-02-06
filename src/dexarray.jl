@@ -113,7 +113,7 @@ import Base: getindex, setindex!
 function getindex{T}(A::DexArray{T}, I::Real)
     J = Int(I)
     1 <= J <= length(A) || throw(BoundsError(A,J))
-    Dex!(T[0], 1, A, J, 1)[1]
+    unsafe_copy!(T[0], 1, A, J, 1)[1]
 end
 
 function setindex!{T}(A::DexArray{T}, v, I::Real)
@@ -191,7 +191,7 @@ function getindex{T,N}(A::DexArray{T,N}, I::Union{Real, UnitRange, Colon}...)
     else
         B = similar(A, (B1,B2))
         nrows *= sizeof(T); astep *= sizeof(T)
-        ccall((:xcopy,libknet8),Void,(Cint,Cint,Cptr,Cint,Cptr,Cint),
+        ccall((:xcopy,libcudex),Void,(Cint,Cint,Cptr,Cint,Cptr,Cint),
               nrows, ncols, pointer(A,firstindex), astep, B, nrows)
         return B
     end
@@ -219,7 +219,7 @@ function setindex!{T,N}(A::DexArray{T,N}, B, I::Union{Real, UnitRange, Colon}...
                   aptr0, B, nelts*sizeof(T), cudadir(A,B), C_NULL)
         else
             nrows *= sizeof(T); astep *= sizeof(T)
-            ccall((:xcopy,libknet8),Void,(Cint,Cint,Cptr,Cint,Cptr,Cint), nrows, ncols, B, nrows, aptr0, astep)
+            ccall((:xcopy,libcudex),Void,(Cint,Cint,Cptr,Cint,Cptr,Cint), nrows, ncols, B, nrows, aptr0, astep)
         end
     end
     return A
